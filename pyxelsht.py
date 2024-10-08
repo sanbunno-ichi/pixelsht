@@ -1,21 +1,36 @@
+#------------------------------------------
+# title: Pyxel Shooting（仮称:Invader's Counterattack）
+# author: sanbunnoichi
+# desc: Shooting Game
+# site: https://github.com/sanbunno-ichi/pyxelsht
+# license: MIT
+# version: 0.0
+#
+#更新履歴
+#2024.10.07 地形MAPと多重スクロール化
+#2024.10.04 再開、プレイヤー機を変更
+#2024.08.27 敵の動き組み込み
+#2024.08.25 作成開始
+################################################################################
+
 import pyxel
-#from font.bdfrenderer import BDFRenderer
 
 ################################################################################
 #[const]定数
 
 SCREEN_WIDTH	=	240
+MAP_WIDTH		=	320
 SCREEN_HEIGHT	=	320
 
-ENE_YU_LIMIT	=	-30
-ENE_YD_LIMIT	=	SCREEN_HEIGHT+30
-ENE_XL_LIMIT	=	-20
-ENE_XR_LIMIT	=	SCREEN_WIDTH+20
+ENE_YU_LIMIT	=	-0x40
+ENE_YD_LIMIT	=	SCREEN_HEIGHT+0x20
+ENE_XL_LIMIT	=	-0x40
+ENE_XR_LIMIT	=	SCREEN_WIDTH+0x20
 
 PLY_YU_LIMIT	=	0
-PLY_YD_LIMIT	=	SCREEN_HEIGHT-8
-PLY_XL_LIMIT	=	-8
-PLY_XR_LIMIT	=	SCREEN_WIDTH-8
+PLY_YD_LIMIT	=	SCREEN_HEIGHT-0x20
+PLY_XL_LIMIT	=	0
+PLY_XR_LIMIT	=	SCREEN_WIDTH-0x20
 
 #-----------------------------------------------------------------
 # game(game_adv)
@@ -56,7 +71,10 @@ W_PAGE0f		=	WORK_TOP+0x0f00
 #	PAGE00
 #-----------------------------------------------------------------
 game_adv		=	W_PAGE00+0x00		#game_control number
-
+map_xpos		=	W_PAGE00+0x01
+map_ypos		=	W_PAGE00+0x02
+map2_xpos		=	W_PAGE00+0x03
+map2_ypos		=	W_PAGE00+0x04
 
 ene_g1_number	=	W_PAGE00+0x10		#enemy group1 順番番号
 ene_g2_number	=	W_PAGE00+0x11		#enemy group2 順番番号
@@ -87,7 +105,7 @@ cmcnt		=	0x0a		#移動カウンタ
 cmcnt2		=	0x0b		#移動カウンタ２
 cwait		=	0x0c		#登場待ちカウンタ
 
-CHAR_MAX		=	0x10		#character ass max
+CWORK_SIZE			=	0x10		#各種キャラクタワークサイズ
 
 #-----------------------------------------------------------------
 #	PAGE01	プレイヤー他
@@ -104,7 +122,7 @@ PTMAX			=	32
 #-----------------------------------------------------------------
 STARMAX			=	32
 STAR1_WORK		=	W_PAGE04+0x00						#手前側
-STAR2_WORK		=	STAR1_WORK + ( CHAR_MAX * STARMAX )	#奥側
+STAR2_WORK		=	STAR1_WORK + ( CWORK_SIZE * STARMAX )	#奥側
 #-----------------------------------------------------------------
 #	PAGE08	敵グループ１
 #-----------------------------------------------------------------
@@ -116,22 +134,25 @@ ENE_G1_MAX		=	16
 #	PAGE09	敵グループ２
 #-----------------------------------------------------------------
 #ENE_G2_WORK	=	W_PAGE09+0x00
-ENE_G2_WORK		=	ENE_WORK + ( CHAR_MAX * ENE_G1_MAX )
+ENE_G2_WORK		=	ENE_WORK + ( CWORK_SIZE * ENE_G1_MAX )
 ENE_G2_MAX		=	16
 #-----------------------------------------------------------------
 #	PAGE0a	敵グループ３
 #-----------------------------------------------------------------
 #ENE_G3_WORK	=	W_PAGE0a+0x00
-ENE_G3_WORK		=	ENE_WORK + ( CHAR_MAX * ENE_G2_MAX )
+ENE_G3_WORK		=	ENE_WORK + ( CWORK_SIZE * ENE_G2_MAX )
 ENE_G3_MAX		=	16
 #-----------------------------------------------------------------
-#	PAGE0b
+#	PAGE0b	敵グループ４（地上敵）
 #-----------------------------------------------------------------
+#ENE_G4_WORK	=	W_PAGE0b+0x00
+ENE_G4_WORK		=	ENE_WORK + ( CWORK_SIZE * ENE_G3_MAX )
+ENE_G4_MAX		=	16
 
 #-----------------------------------------------------------------
-#キャラクタテーブル
+#キャラクタテーブル（ページ０）
 #-----------------------------------------------------------------
-IDMAX = 0x8c
+IDMAX = 0xc1
 ctbl = [[0 for i in range(4)] for j in range(IDMAX)]
 ctbl = [
 	# u,    v,    us,   vs
@@ -141,41 +162,42 @@ ctbl = [
 	[ 0x04, 0x08, 0x02, 0x02 ],		#0x03 敵弾1-2
 	[ 0x00, 0x0c, 0x02, 0x02 ],		#0x04 敵弾1-3
 	[ 0x04, 0x0c, 0x02, 0x02 ],		#0x05 敵弾1-4
-	[ 0x00, 0x70, 0x08, 0x0a ],		#0x06 敵弾2-1(8x10)
+
+	[ 0x00, 0x70, 0x08, 0x0a ],		#0x06 敵弾2-1(8x10)まっすぐ下へ
 	[ 0x08, 0x70, 0x08, 0x0a ],		#0x07 敵弾2-2
 	[ 0x10, 0x70, 0x08, 0x0a ],		#0x08 敵弾2-3
 	[ 0x18, 0x70, 0x08, 0x0a ],		#0x09 敵弾2-4
-	[ 0x20, 0x70, 0x08, 0x0a ],		#0x0a 敵弾3-1(8x10)
+	[ 0x20, 0x70, 0x08, 0x0a ],		#0x0a 敵弾3-1(8x10)まっすぐ下へ
 	[ 0x28, 0x70, 0x08, 0x0a ],		#0x0b 敵弾3-2
 	[ 0x30, 0x70, 0x08, 0x0a ],		#0x0c 敵弾3-3
 	[ 0x38, 0x70, 0x08, 0x0a ],		#0x0d 敵弾3-4
-	[ 0x40, 0x70, 0x08, 0x0a ],		#0x0e 敵弾4-1(8x10)
+	[ 0x40, 0x70, 0x08, 0x0a ],		#0x0e 敵弾4-1(8x10)まっすぐ下へ
 	[ 0x48, 0x70, 0x08, 0x0a ],		#0x0f 敵弾4-2
 	[ 0x50, 0x70, 0x08, 0x0a ],		#0x10 敵弾4-3
 	[ 0x58, 0x70, 0x08, 0x0a ],		#0x11 敵弾4-4
-	[ 0x60, 0x70, 0x08, 0x0a ],		#0x12 自弾1-1(8x10)
+	[ 0x60, 0x70, 0x08, 0x0a ],		#0x12 自弾1-1(8x10)old（あとで消す
 	[ 0x68, 0x70, 0x08, 0x0a ],		#0x13 自弾1-2
 	[ 0x70, 0x70, 0x08, 0x0a ],		#0x14 自弾1-3
 	[ 0x78, 0x70, 0x08, 0x0a ],		#0x15 自弾1-4
-	[ 0x60, 0x70, 0x08, 0x05 ],		#0x16 インベ自弾2-1(8x5)
+	[ 0x60, 0x70, 0x08, 0x05 ],		#0x16 インベ自弾2-1(8x5)old（あとで消す
 	[ 0x00, 0x00, 0x00, 0x00 ],		#0x17 (空)
 
-	[ 0x00, 0x58, 0x10, 0x08 ],		#0x18 インベ自機(白)
-	[ 0x10, 0x58, 0x10, 0x08 ],		#0x19 インベ自機(赤)
-	[ 0x20, 0x58, 0x10, 0x08 ],		#0x1a インベ自機(青)
-	[ 0x30, 0x58, 0x10, 0x08 ],		#0x1b インベ自機(緑)
-	[ 0x40, 0x58, 0x10, 0x08 ],		#0x1c インベ自機(黄)
-	[ 0x50, 0x58, 0x10, 0x08 ],		#0x1d インベ自機(桃)
-	[ 0x60, 0x58, 0x10, 0x08 ],		#0x1e インベ自機(紫)
-	[ 0x70, 0x58, 0x10, 0x10 ],		#0x1f インベ自機(灰)
-	[ 0x00, 0x60, 0x10, 0x10 ],		#0x20 自機(白)
-	[ 0x10, 0x60, 0x10, 0x10 ],		#0x21 自機(赤)
-	[ 0x20, 0x60, 0x10, 0x10 ],		#0x22 自機(青)
-	[ 0x30, 0x60, 0x10, 0x10 ],		#0x23 自機(緑)
-	[ 0x40, 0x60, 0x10, 0x10 ],		#0x24 自機(黄)
-	[ 0x50, 0x60, 0x10, 0x10 ],		#0x25 自機(桃)
-	[ 0x60, 0x60, 0x10, 0x10 ],		#0x26 自機(紫)
-	[ 0x70, 0x60, 0x10, 0x10 ],		#0x27 自機(灰)
+	[ 0x00, 0x58, 0x10, 0x08 ],		#0x18 インベ自機(白)old（あとで消す
+	[ 0x10, 0x58, 0x10, 0x08 ],		#0x19 インベ自機(赤)old（あとで消す
+	[ 0x20, 0x58, 0x10, 0x08 ],		#0x1a インベ自機(青)old（あとで消す
+	[ 0x30, 0x58, 0x10, 0x08 ],		#0x1b インベ自機(緑)old（あとで消す
+	[ 0x40, 0x58, 0x10, 0x08 ],		#0x1c インベ自機(黄)old（あとで消す
+	[ 0x50, 0x58, 0x10, 0x08 ],		#0x1d インベ自機(桃)old（あとで消す
+	[ 0x60, 0x58, 0x10, 0x08 ],		#0x1e インベ自機(紫)old（あとで消す
+	[ 0x70, 0x58, 0x10, 0x10 ],		#0x1f インベ自機(灰)old（あとで消す
+	[ 0x00, 0x60, 0x10, 0x10 ],		#0x20 自機(白)old（あとで消す
+	[ 0x10, 0x60, 0x10, 0x10 ],		#0x21 自機(赤)old（あとで消す
+	[ 0x20, 0x60, 0x10, 0x10 ],		#0x22 自機(青)old（あとで消す
+	[ 0x30, 0x60, 0x10, 0x10 ],		#0x23 自機(緑)old（あとで消す
+	[ 0x40, 0x60, 0x10, 0x10 ],		#0x24 自機(黄)old（あとで消す
+	[ 0x50, 0x60, 0x10, 0x10 ],		#0x25 自機(桃)old（あとで消す
+	[ 0x60, 0x60, 0x10, 0x10 ],		#0x26 自機(紫)old（あとで消す
+	[ 0x70, 0x60, 0x10, 0x10 ],		#0x27 自機(灰)old（あとで消す
 
 	[ 0x00, 0x10, 0x10, 0x08 ],		#0x28 敵1-1-1(白)
 	[ 0x00, 0x18, 0x10, 0x08 ],		#0x29 敵1-1-2(白)
@@ -253,29 +275,29 @@ ctbl = [
 	[ 0x70, 0x48, 0x10, 0x08 ],		#0x6e UFO-8-2(灰)
 	[ 0x70, 0x50, 0x10, 0x08 ],		#0x6f UFO-8-3(灰)
 
-	[ 0x00, 0x80, 0x10, 0x10 ],		#0x70 爆発赤1
+	[ 0x00, 0x80, 0x10, 0x10 ],		#0x70 爆発赤1　カンタン破裂
 	[ 0x10, 0x80, 0x10, 0x10 ],		#0x71 爆発赤2
 	[ 0x00, 0x90, 0x10, 0x10 ],		#0x72 爆発赤3
 	[ 0x10, 0x90, 0x10, 0x10 ],		#0x73 爆発赤4
 
-	[ 0x20, 0x80, 0x10, 0x10 ],		#0x74 爆発白1
+	[ 0x20, 0x80, 0x10, 0x10 ],		#0x74 爆発白1　カンタン破裂
 	[ 0x30, 0x80, 0x10, 0x10 ],		#0x75 爆発白2
 	[ 0x20, 0x90, 0x10, 0x10 ],		#0x76 爆発白3
 	[ 0x30, 0x90, 0x10, 0x10 ],		#0x77 爆発白4
 
-	[ 0x08, 0x00, 0x08, 0x08 ],		#0x78 SpeedUp(灰)
-	[ 0x10, 0x00, 0x08, 0x08 ],		#0x79 SpeedUp(赤)
-	[ 0x18, 0x00, 0x08, 0x08 ],		#0x7a SpeedUp(黄)
-	[ 0x20, 0x00, 0x08, 0x08 ],		#0x7b SpeedUp(緑)
-	[ 0x28, 0x00, 0x08, 0x08 ],		#0x7c SpeedUp(青)
-	[ 0x30, 0x00, 0x08, 0x08 ],		#0x7d SpeedUp(白)
+	[ 0x08, 0x00, 0x08, 0x08 ],		#0x78 SpeedUp(灰)あとで考え直すかも
+	[ 0x10, 0x00, 0x08, 0x08 ],		#0x79 SpeedUp(赤)あとで考え直すかも
+	[ 0x18, 0x00, 0x08, 0x08 ],		#0x7a SpeedUp(黄)あとで考え直すかも
+	[ 0x20, 0x00, 0x08, 0x08 ],		#0x7b SpeedUp(緑)あとで考え直すかも
+	[ 0x28, 0x00, 0x08, 0x08 ],		#0x7c SpeedUp(青)あとで考え直すかも
+	[ 0x30, 0x00, 0x08, 0x08 ],		#0x7d SpeedUp(白)あとで考え直すかも
 
-	[ 0x08, 0x08, 0x08, 0x08 ],		#0x7e PowerUp(灰)
-	[ 0x10, 0x08, 0x08, 0x08 ],		#0x7f PowerUp(赤)
-	[ 0x18, 0x08, 0x08, 0x08 ],		#0x80 PowerUp(黄)
-	[ 0x20, 0x08, 0x08, 0x08 ],		#0x81 PowerUp(緑)
-	[ 0x28, 0x08, 0x08, 0x08 ],		#0x82 PowerUp(青)
-	[ 0x30, 0x08, 0x08, 0x08 ],		#0x83 PowerUp(白)
+	[ 0x08, 0x08, 0x08, 0x08 ],		#0x7e PowerUp(灰)あとで考え直すかも
+	[ 0x10, 0x08, 0x08, 0x08 ],		#0x7f PowerUp(赤)あとで考え直すかも
+	[ 0x18, 0x08, 0x08, 0x08 ],		#0x80 PowerUp(黄)あとで考え直すかも
+	[ 0x20, 0x08, 0x08, 0x08 ],		#0x81 PowerUp(緑)あとで考え直すかも
+	[ 0x28, 0x08, 0x08, 0x08 ],		#0x82 PowerUp(青)あとで考え直すかも
+	[ 0x30, 0x08, 0x08, 0x08 ],		#0x83 PowerUp(白)あとで考え直すかも
 
 	[ 0x08, 0xa0, 0x01, 0x02 ],		#0x84 明るい星2
 	[ 0x10, 0xa0, 0x01, 0x04 ],		#0x85 明るい星3
@@ -286,6 +308,75 @@ ctbl = [
 	[ 0x14, 0xa0, 0x01, 0x04 ],		#0x89 暗い星3
 	[ 0x1c, 0xa0, 0x01, 0x08 ],		#0x8a 暗い星4
 	[ 0x24, 0xa0, 0x01, 0x10 ],		#0x8b 暗い星5
+	
+	[ 0x80, 0x00, 0x20, 0x20 ],		#0x8c 自機戦闘機1(緑)
+	[ 0x80, 0x20, 0x20, 0x20 ],		#0x8d 自機戦闘機2(緑)
+	[ 0xa0, 0x00, 0x20, 0x20 ],		#0x8e 自機戦闘機1(灰)
+	[ 0xa0, 0x20, 0x20, 0x20 ],		#0x8f 自機戦闘機2(灰)
+	[ 0xc0, 0x00, 0x20, 0x20 ],		#0x90 自機戦闘機1(青)
+	[ 0xc0, 0x20, 0x20, 0x20 ],		#0x91 自機戦闘機2(青)
+
+	[ 0x80, 0x40, 0x14, 0x05 ],		#0x92 バルカン砲(2発タイプ)
+	[ 0x80, 0x40, 0x05, 0x05 ],		#0x93 バルカン砲(1発タイプ)
+	[ 0x80, 0x50, 0x14, 0x05 ],		#0x94 貫通弾1(2発タイプ)
+	[ 0x80, 0x58, 0x14, 0x05 ],		#0x95 貫通弾2(2発タイプ)
+	[ 0x80, 0x50, 0x05, 0x05 ],		#0x96 貫通弾1(1発タイプ)
+	[ 0x80, 0x58, 0x05, 0x05 ],		#0x97 貫通弾2(1発タイプ)
+	[ 0x80, 0x48, 0x14, 0x08 ],		#0x98 レーザー砲(2発タイプ)
+	[ 0x80, 0x48, 0x05, 0x08 ],		#0x99 レーザー砲(1発タイプ)
+
+	[ 0x80, 0x60, 0x10, 0x10 ],		#0x9a 爆発1
+	[ 0x90, 0x60, 0x10, 0x10 ],		#0x9b 爆発2
+	[ 0xa0, 0x60, 0x10, 0x10 ],		#0x9c 爆発3
+	[ 0xb0, 0x60, 0x10, 0x10 ],		#0x9d 爆発4
+	[ 0x80, 0x70, 0x10, 0x10 ],		#0x9e 爆発5
+	[ 0x90, 0x70, 0x10, 0x10 ],		#0x9f 爆発6
+	[ 0xa0, 0x70, 0x10, 0x10 ],		#0xa0 爆発7
+	[ 0xb0, 0x70, 0x10, 0x10 ],		#0xa1 爆発8
+
+	[ 0x60, 0xe0, 0x10, 0x10 ],		#0xa2 地上敵一発破壊1(肌)（中央砲台有り1発）
+	[ 0x70, 0xe0, 0x10, 0x10 ],		#0xa3 地上敵一発破壊2(肌)（中央砲台無し）
+	[ 0x60, 0xf0, 0x10, 0x10 ],		#0xa4 地上敵一発破壊3(肌)（中央砲台無し）
+	[ 0x70, 0xf0, 0x10, 0x10 ],		#0xa5 地上敵一発破壊4(肌)（中央砲台無し）
+	[ 0x40, 0xe0, 0x10, 0x10 ],		#0xa6 地上敵破壊不可1(灰)（中央砲台有り1発）
+	[ 0x50, 0xe0, 0x10, 0x10 ],		#0xa7 地上敵破壊不可2(灰)（中央砲台無し）
+	[ 0x40, 0xf0, 0x10, 0x10 ],		#0xa8 地上敵破壊不可3(灰)（中央砲台無し）
+	[ 0x50, 0xf0, 0x10, 0x10 ],		#0xa9 地上敵破壊不可4(灰)（中央砲台無し）
+
+	[ 0x40, 0x80, 0x10, 0x10 ],		#0xaa 地上敵数発破壊1-0(緑)（中央砲台有り1発）
+	[ 0x50, 0x80, 0x10, 0x10 ],		#0xab 地上敵数発破壊2-0(緑)（中央砲台無し）
+	[ 0x40, 0x90, 0x10, 0x10 ],		#0xac 地上敵数発破壊3-0(緑)（中央砲台無し）
+	[ 0x50, 0x90, 0x10, 0x10 ],		#0xad 地上敵数発破壊4-0(緑)（中央砲台無し）
+
+	[ 0x40, 0xa0, 0x10, 0x10 ],		#0xae 地上敵数発破壊1-1キラリ1(緑)（中央砲台有り1発）
+	[ 0x50, 0xa0, 0x10, 0x10 ],		#0xaf 地上敵数発破壊2-1キラリ1(緑)（中央砲台無し）
+	[ 0x40, 0xb0, 0x10, 0x10 ],		#0xb0 地上敵数発破壊3-1キラリ1(緑)（中央砲台無し）
+	[ 0x50, 0xb0, 0x10, 0x10 ],		#0xb1 地上敵数発破壊4-1キラリ1(緑)（中央砲台無し）
+
+	[ 0x40, 0xc0, 0x10, 0x10 ],		#0xae 地上敵数発破壊1-2キラリ2(緑)（中央砲台有り1発）
+	[ 0x50, 0xc0, 0x10, 0x10 ],		#0xaf 地上敵数発破壊2-2キラリ2(緑)（中央砲台無し）
+	[ 0x40, 0xd0, 0x10, 0x10 ],		#0xb0 地上敵数発破壊3-2キラリ2(緑)（中央砲台無し）
+	[ 0x50, 0xd0, 0x10, 0x10 ],		#0xb1 地上敵数発破壊4-2キラリ2(緑)（中央砲台無し）
+
+	[ 0xa0, 0xe0, 0x10, 0x10 ],		#0xb2 地上敵数発破壊x-3キラリ3(緑)0x10-0x10 size
+	[ 0xa0, 0xe0, 0x20, 0x20 ],		#0xb3 地上敵数発破壊x-3キラリ3(緑)0x20-0x20 size
+
+	[ 0x60, 0x80, 0x20, 0x20 ],		#0xb4 地上敵数発破壊5-0（中央砲台有り1発）
+	[ 0x80, 0x80, 0x20, 0x20 ],		#0xb5 地上敵数発破壊6-0（中央砲台有り3発）
+	[ 0xa0, 0x80, 0x20, 0x20 ],		#0xb6 地上敵数発破壊7-0（中央砲台有り5発）
+
+	[ 0x60, 0xa0, 0x20, 0x20 ],		#0xb7 地上敵数発破壊5-1キラリ1（中央砲台有り1発）
+	[ 0x80, 0xa0, 0x20, 0x20 ],		#0xb8 地上敵数発破壊6-1キラリ1（中央砲台有り3発）
+	[ 0xa0, 0xa0, 0x20, 0x20 ],		#0xb9 地上敵数発破壊7-1キラリ1（中央砲台有り5発）
+
+	[ 0x60, 0xc0, 0x20, 0x20 ],		#0xba 地上敵数発破壊5-2キラリ2（中央砲台有り1発）
+	[ 0x80, 0xc0, 0x20, 0x20 ],		#0xbb 地上敵数発破壊6-2キラリ2（中央砲台有り3発）
+	[ 0xa0, 0xc0, 0x20, 0x20 ],		#0xbc 地上敵数発破壊7-2キラリ2（中央砲台有り5発）
+
+	[ 0xa0, 0x40, 0x10, 0x10 ],		#0xbd 戦車上向き
+	[ 0xb0, 0x40, 0x10, 0x10 ],		#0xbe 戦車右向き
+	[ 0xa0, 0x50, 0x10, 0x10 ],		#0xbf 戦車下向き
+	[ 0xb0, 0x50, 0x10, 0x10 ],		#0xc0 戦車左向き
 ]
 
 #-----------------------------------------------------------------
@@ -346,6 +437,10 @@ atbl = [
 
 	[ 4, 0x00, 0x84, 0x85, 0x86, 0x87, 0xff, 0xff ],		#0x2a 明るい星ワープ(1x1～16)
 	[ 4, 0x01, 0x88, 0x89, 0x8a, 0x8b, 0xff, 0xff ],		#0x2b 暗い星ワープ(1x1～16)
+
+	[ 4, 0x8c, 0x8d, 0xff, 0xff, 0xff, 0xff, 0xff ],		#0x2c 自機戦闘機緑
+	[ 4, 0x8e, 0x8f, 0xff, 0xff, 0xff, 0xff, 0xff ],		#0x2d 自機戦闘機緑
+	[ 4, 0x90, 0x91, 0xff, 0xff, 0xff, 0xff, 0xff ],		#0x2e 自機戦闘機緑
 ]
 
 #-----------------------------------------------------------------
@@ -387,14 +482,14 @@ def anim_control( _wk, _flag ):
 #	弾生成
 def ptama_set():
 	for _cnt in range(PTMAX):
-		_wk = PT_WORK+(CHAR_MAX * _cnt)
+		_wk = PT_WORK+(CWORK_SIZE * _cnt)
 		if(( GWK[_wk+ccond] & F_LIVE ) == 0 ):
-			GWK[_wk+cid] = 0x12		#0x16
-			GWK[_wk+cxpos] = GWK[PLY_WORK+cxpos]+4
-			GWK[_wk+cypos] = GWK[PLY_WORK+cypos]-4
+			GWK[_wk+cid] = 0x98
+			GWK[_wk+cxpos] = GWK[PLY_WORK+cxpos]+6
+			GWK[_wk+cypos] = GWK[PLY_WORK+cypos]
 			GWK[_wk+cxspd] = 0
 			GWK[_wk+cyspd] = -6
-			GWK[_wk+canum] = 0x04	#0
+			GWK[_wk+canum] = 0xff
 			GWK[_wk+cacnt] = 0
 			GWK[_wk+caspd] = 0
 			GWK[_wk+ccond] = F_LIVE
@@ -404,7 +499,7 @@ def ptama_set():
 #	弾制御
 def ptama_control():
 	for _cnt in range(PTMAX):
-		_wk = PT_WORK+(CHAR_MAX * _cnt)
+		_wk = PT_WORK+(CWORK_SIZE * _cnt)
 		if( GWK[_wk+ccond] & F_LIVE ):
 			anim_control( _wk, 0 )
 			GWK[_wk+cypos] += GWK[_wk+cyspd]
@@ -415,7 +510,7 @@ def ptama_control():
 #	弾描画
 def ptama_draw():
 	for _cnt in range(PTMAX):
-		_wk = PT_WORK+(CHAR_MAX * _cnt)
+		_wk = PT_WORK+(CWORK_SIZE * _cnt)
 		if( GWK[_wk+ccond] & F_LIVE ):
 			if( GWK[_wk+canum] != 0xff ):
 				_id = atbl[GWK[_wk+canum]][GWK[_wk+cacnt]+1]
@@ -435,12 +530,14 @@ def star_init():
 	for _cnt in range(STARMAX):
 		#手前側
 		_pos_offset = pyxel.rndi(0, _pos_range)
-		_wk = STAR1_WORK+(CHAR_MAX * _cnt)
+		_wk = STAR1_WORK+(CWORK_SIZE * _cnt)
 		GWK[_wk+cxpos] = ( _cnt * _pos_range ) + _pos_offset
-		GWK[_wk+cypos] = -30
+#		GWK[_wk+cypos] = -100
+		GWK[_wk+cypos] = pyxel.rndi(0, SCREEN_HEIGHT)
 		GWK[_wk+cxspd] = 0.0
-		GWK[_wk+cyspd] = 2.0
-		GWK[_wk+cwait] = pyxel.rndi(0, SCREEN_HEIGHT)
+		GWK[_wk+cyspd] = 0.3	#2.0
+#		GWK[_wk+cwait] = pyxel.rndi(0, SCREEN_HEIGHT)
+		GWK[_wk+cwait] = 0
 		GWK[_wk+cid] = 0x00
 		GWK[_wk+ccond] = 0x00
 		GWK[_wk+canum] = 0xff
@@ -448,12 +545,14 @@ def star_init():
 		GWK[_wk+caspd] = 0
 		#奥側
 		_pos_offset = pyxel.rndi(0, _pos_range)
-		_wk = STAR2_WORK+(CHAR_MAX * _cnt)
+		_wk = STAR2_WORK+(CWORK_SIZE * _cnt)
 		GWK[_wk+cxpos] = ( _cnt * _pos_range ) + _pos_offset
-		GWK[_wk+cypos] = -30
+#		GWK[_wk+cypos] = -100
+		GWK[_wk+cypos] = pyxel.rndi(0, SCREEN_HEIGHT)
 		GWK[_wk+cxspd] = 0.0
-		GWK[_wk+cyspd] = 1.0
-		GWK[_wk+cwait] = pyxel.rndi(0, SCREEN_HEIGHT)
+		GWK[_wk+cyspd] = 0.1	#1.0
+#		GWK[_wk+cwait] = pyxel.rndi(0, SCREEN_HEIGHT)
+		GWK[_wk+cwait] = 0
 		GWK[_wk+cid] = 0x01
 		GWK[_wk+ccond] = 0x00
 		GWK[_wk+canum] = 0xff
@@ -466,11 +565,11 @@ def star_control():
 	_pos_range = int(SCREEN_WIDTH / STARMAX)
 	for _cnt in range(STARMAX):
 		#手前側
-		_wk = STAR1_WORK+(CHAR_MAX * _cnt)
+		_wk = STAR1_WORK+(CWORK_SIZE * _cnt)
 		#ワープ制御
 		if( GWK[_wk+ccond] & F_WARPEND ):
 			if anim_control( _wk, 2 ):
-				GWK[_wk+cyspd] = 2.0
+				GWK[_wk+cyspd] = 0.3	#2.0
 				GWK[_wk+cid] = 0x00
 				GWK[_wk+canum] = 0xff
 				GWK[_wk+cacnt] = 0
@@ -490,18 +589,18 @@ def star_control():
 				_pos_offset = pyxel.rndi(0, _pos_range)
 				GWK[_wk+cxpos] = ( _cnt * _pos_range ) + _pos_offset
 				GWK[_wk+cwait] = pyxel.rndi(0, SCREEN_HEIGHT)
-				GWK[_wk+cypos] = -30
+				GWK[_wk+cypos] = -10
 		else:
 			GWK[_wk+cwait] -= 1
 			if( GWK[_wk+cwait] < 0 ):
 				GWK[_wk+ccond] |= F_LIVE
 
 		#奥側
-		_wk = STAR2_WORK+(CHAR_MAX * _cnt)
+		_wk = STAR2_WORK+(CWORK_SIZE * _cnt)
 		#ワープ制御
 		if( GWK[_wk+ccond] & F_WARPEND ):
 			if anim_control( _wk, 2 ):
-				GWK[_wk+cyspd] = 1.0
+				GWK[_wk+cyspd] = 0.1	#1.0
 				GWK[_wk+cid] = 0x01
 				GWK[_wk+canum] = 0xff
 				GWK[_wk+cacnt] = 0
@@ -521,7 +620,7 @@ def star_control():
 				_pos_offset = pyxel.rndi(0, _pos_range)
 				GWK[_wk+cxpos] = ( _cnt * _pos_range ) + _pos_offset
 				GWK[_wk+cwait] = pyxel.rndi(0, SCREEN_HEIGHT)
-				GWK[_wk+cypos] = -30
+				GWK[_wk+cypos] = -10
 		else:
 			GWK[_wk+cwait] -= 1
 			if( GWK[_wk+cwait] < 0 ):
@@ -533,13 +632,13 @@ def star_control():
 def star_warp_start():
 	for _cnt in range(STARMAX):
 		#手前側
-		_wk = STAR1_WORK+(CHAR_MAX * _cnt)
+		_wk = STAR1_WORK+(CWORK_SIZE * _cnt)
 		GWK[_wk+ccond] |= F_WARP
 		GWK[_wk+canum] = 0x2a
 		GWK[_wk+cacnt] = 0
 		GWK[_wk+caspd] = 0
 		#奥側
-		_wk = STAR2_WORK+(CHAR_MAX * _cnt)
+		_wk = STAR2_WORK+(CWORK_SIZE * _cnt)
 		GWK[_wk+ccond] |= F_WARP
 		GWK[_wk+canum] = 0x2b
 		GWK[_wk+cacnt] = 0
@@ -549,11 +648,11 @@ def star_warp_start():
 def star_warp_end():
 	for _cnt in range(STARMAX):
 		#手前側
-		_wk = STAR1_WORK+(CHAR_MAX * _cnt)
+		_wk = STAR1_WORK+(CWORK_SIZE * _cnt)
 		GWK[_wk+ccond] |= F_WARPEND
 		#GWK[_wk+caspd] = 0
 		#奥側
-		_wk = STAR2_WORK+(CHAR_MAX * _cnt)
+		_wk = STAR2_WORK+(CWORK_SIZE * _cnt)
 		GWK[_wk+ccond] |= F_WARPEND
 		#GWK[_wk+caspd] = 0
 
@@ -562,7 +661,7 @@ def star_warp_end():
 def star_draw():
 	for _cnt in range(STARMAX):
 		#手前側
-		_wk = STAR1_WORK+(CHAR_MAX * _cnt)
+		_wk = STAR1_WORK+(CWORK_SIZE * _cnt)
 		if( GWK[_wk+ccond] & F_LIVE ):
 			if( GWK[_wk+canum] != 0xff ):
 				_id = atbl[GWK[_wk+canum]][GWK[_wk+cacnt]+1]
@@ -573,7 +672,7 @@ def star_draw():
 			pyxel.blt( _xp, _yp, 0, ctbl[_id][0], ctbl[_id][1], ctbl[_id][2], ctbl[_id][3], 0 )
 		
 		#奥側
-		_wk = STAR2_WORK+(CHAR_MAX * _cnt)
+		_wk = STAR2_WORK+(CWORK_SIZE * _cnt)
 		if( GWK[_wk+ccond] & F_LIVE ):
 			if( GWK[_wk+canum] != 0xff ):
 				_id = atbl[GWK[_wk+canum]][GWK[_wk+cacnt]+1]
@@ -610,7 +709,7 @@ def star_draw():
 #	敵グループ１生成（動き毎に設定が変更される）
 def ene_g1_set():
 	for _cnt in range(ENE_G1_MAX):
-		_wk = ENE_G1_WORK+(CHAR_MAX * _cnt)
+		_wk = ENE_G1_WORK+(CWORK_SIZE * _cnt)
 		GWK[_wk+cypos] = -30
 		GWK[_wk+ccond] = F_ACTIVE
 		GWK[_wk+cacnt] = 0
@@ -664,7 +763,7 @@ def ene_g1_set():
 #	敵グループ１制御（出現管理と動き）
 def ene_g1_control():
 	for _cnt in range(ENE_G1_MAX):
-		_wk = ENE_G1_WORK+(CHAR_MAX * _cnt)
+		_wk = ENE_G1_WORK+(CWORK_SIZE * _cnt)
 		if(GWK[_wk+ccond] & F_LIVE):
 			anim_control( _wk, 0 )
 			#うねうね
@@ -822,7 +921,7 @@ def ene_g1_control():
 def ene_control():
 	_cnt_g1 = 0
 	for _cnt in range(ENE_G1_MAX):
-		_wk = ENE_G1_WORK+(CHAR_MAX * _cnt)
+		_wk = ENE_G1_WORK+(CWORK_SIZE * _cnt)
 		if(GWK[_wk+ccond] & (F_LIVE+F_ACTIVE)):
 			_cnt_g1 += 1
 	if( _cnt_g1 == 0 ):
@@ -835,7 +934,7 @@ def ene_control():
 #	敵グループ１描画
 def ene_g1_draw():
 	for _cnt in range(ENE_G1_MAX):
-		_wk = ENE_G1_WORK+(CHAR_MAX * _cnt)
+		_wk = ENE_G1_WORK+(CWORK_SIZE * _cnt)
 		if(GWK[_wk+ccond] & F_LIVE):
 			if( GWK[_wk+canum] != 0xff ):
 				_id = atbl[GWK[_wk+canum]][GWK[_wk+cacnt]+1]
@@ -854,23 +953,47 @@ def game_control():
 	ene_g1_control()
 	ptama_control()
 
+	GWK[map_ypos] -= 1
+#[1-1][1-3]
+	if( GWK[map_ypos] <= 64 ):
+		GWK[map_ypos] = 384
+#[1-2]
+#	if( GWK[map_ypos] <= (1024+64) ):
+#		GWK[map_ypos] = (1024+384)
+	GWK[map2_ypos] -= 0.5	#減算してちょうど64になるように設定する
+#[2-1]
+	if( GWK[map2_ypos] <= 64 ):
+		GWK[map2_ypos] = 384
+#[2-2]
+#	if( GWK[map2_ypos] <= (1024+64) ):
+#		GWK[map2_ypos] = (1024+384)
+
 	if getInputLEFT():
 		GWK[PLY_WORK+cxpos] -= GWK[PLY_WORK+cxspd]
-	if getInputRIGHT():
-		GWK[PLY_WORK+cxpos] += GWK[PLY_WORK+cxspd]
-	if getInputUP():
-		GWK[PLY_WORK+cypos] -= GWK[PLY_WORK+cyspd]
-	if getInputDOWN():
-		GWK[PLY_WORK+cypos] += GWK[PLY_WORK+cyspd]
-
 		if( GWK[PLY_WORK+cxpos] < PLY_XL_LIMIT ):
 			GWK[PLY_WORK+cxpos] = PLY_XL_LIMIT
+		else:
+			#(MAP_WIDTH/2) - (SCREEN_WIDTH/2)
+			GWK[map_xpos] -= GWK[PLY_WORK+cxspd] * (1/3)
+
+	if getInputRIGHT():
+		GWK[PLY_WORK+cxpos] += GWK[PLY_WORK+cxspd]
 		if( GWK[PLY_WORK+cxpos] > PLY_XR_LIMIT ):
 			GWK[PLY_WORK+cxpos] = PLY_XR_LIMIT
+		else:
+			GWK[map_xpos] += GWK[PLY_WORK+cxspd] * (1/3)
+
+	if getInputUP():
+		GWK[PLY_WORK+cypos] -= GWK[PLY_WORK+cyspd]
 		if( GWK[PLY_WORK+cypos] < PLY_YU_LIMIT ):
 			GWK[PLY_WORK+cypos] = PLY_YU_LIMIT
+
+	if getInputDOWN():
+		GWK[PLY_WORK+cypos] += GWK[PLY_WORK+cyspd]
 		if( GWK[PLY_WORK+cypos] > PLY_YD_LIMIT ):
 			GWK[PLY_WORK+cypos] = PLY_YD_LIMIT
+
+	
 
 
 	if getInputA():
@@ -884,9 +1007,45 @@ def game_control():
 
 ################################################################################
 #描画
+#
+#	タイルマップの使い方
+#
+#	X方向スクロールする面の場合、スクロールしないのならwidth=240でよい
+#	|		C		|
+#	|				64
+#	+----320--------+	<---v=64
+#	|				|
+#	|				|
+#	|		B		320
+#	|				|
+#	|				|
+#	+---------------+	<---v=384
+#	|				|
+#	|				|
+#	|		A		320		
+#	|				|
+#	|				|	A=B=C
+#	+---------------+
+#	として、uvのvの値を始点：v=384 として
+#	負値のスクロールスピードを与えて、v=64となった時、v=384を再設定して
+#	延々とスクロールさせることが可能
+#	320x320をひとつの面として同じものをつなぎ合わせて違和感のないデザインにする
+#	Cの64dot分は不要だがあくまでも念のための処置
+#	（はみ出ない保証あるなら不要。おそらくスクロールスピードで2の倍数なら大丈夫のはず）
+#	注釈
+#	vサイズ320を超えたい場合は随時フレームの外で書き換えが必要になる
+#	縦スクロールシューティングでこだわりなければこの方法が楽
+#	一応タイルマップのvの最大値は2048あるのでその中でまわすことも可能
+#	ただしv書き換えの際、画面に違和感をなくすため画面縦サイズdot分は合わせる必要がある
+#
+#	一応処理速度に問題なければ多重スクロールは可能（重ねるだけなので）
 def game_draw():
 	#星描画
 	star_draw()
+
+	#MAPスクロール（これでは短いので書き換え処理が必要かも★
+	pyxel.bltm(0, 0, 0, GWK[map_xpos], GWK[map_ypos], 320, 320, colkey=0)
+
 	ene_g1_draw()
 	ptama_draw()
 
@@ -895,6 +1054,9 @@ def game_draw():
 	_xp = GWK[PLY_WORK+cxpos]
 	_yp = GWK[PLY_WORK+cypos]
 	pyxel.blt( _xp, _yp, 0, ctbl[_id][0], ctbl[_id][1], ctbl[_id][2], ctbl[_id][3], 0 )
+
+	#上の面（この面もスクロールさせる？横方向は無し縦のみ
+	pyxel.bltm(0, 0, 0, GWK[map2_xpos], GWK[map2_ypos], 240, 320, colkey=0)
 
 #-----------------------------------------------------------------
 #work clear
@@ -989,17 +1151,38 @@ pyxel.load("pyxelsht.pyxres")
 work_clear()
 
 #初期値セット（仮）
-GWK[PLY_WORK+cid] = 0x18
+GWK[PLY_WORK+cid] = 0x8c
 GWK[PLY_WORK+cxpos] = int( ( SCREEN_WIDTH - ctbl[GWK[PLY_WORK+cid]][2] ) / 2 )
 GWK[PLY_WORK+cypos] = int( ( SCREEN_HEIGHT * 3 ) / 4 )
 GWK[PLY_WORK+cxspd] = 2.0
 GWK[PLY_WORK+cyspd] = 2.0
+
+GWK[PLY_WORK+canum] = 0x2c
+GWK[PLY_WORK+cacnt] = 0
+GWK[PLY_WORK+caspd] = 0
 
 #各種初期化
 star_init()
 GWK[ene_g1_number] = 0
 GWK[ene_g2_number] = 0
 GWK[ene_g3_number] = 0
+
+#[1-1]
+GWK[map_xpos] = (MAP_WIDTH-SCREEN_WIDTH)/2
+GWK[map_ypos] = 384
+#[1-2]
+#GWK[map_xpos] = (MAP_WIDTH-SCREEN_WIDTH)/2
+#GWK[map_ypos] = 1024+384
+#[1-3]
+#GWK[map_xpos] = 576+(MAP_WIDTH-SCREEN_WIDTH)/2
+#GWK[map_ypos] = 384
+
+#[2-1]
+GWK[map2_xpos] = 320
+GWK[map2_ypos] = 384
+#[2-2]
+#GWK[map2_xpos] = 320
+#GWK[map2_ypos] = 1024+384
 
 #仮敵出現
 ene_g1_set()
